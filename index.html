@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Universal Tactical Board</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background: #1a1a1a; color: white; font-family: sans-serif; margin: 0; padding: 10px; overflow-x: hidden; }
+        .controls { background: #333; padding: 10px; border-radius: 10px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 10px; width: 95%; max-width: 950px; }
+        .canvas-wrapper { width: 100%; max-width: 950px; overflow: hidden; touch-action: none; }
+        canvas { border: 2px solid #555; border-radius: 5px; max-width: 100%; height: auto !important; }
+        button, select { padding: 6px 10px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        .btn-draw { background: #ffc107; }
+        .btn-draw.active { background: #ffeb3b; outline: 2px solid white; }
+        .btn-save { background: #28a745; color: white; }
+        .toggle-group { display: flex; align-items: center; gap: 5px; background: #444; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+        select { background: #007bff; color: white; }
+        label { font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <select id="formationSelect" onchange="applyFormation()">
+            <optgroup label="11 v 11">
+                <option value="433">4-3-3</option><option value="4231">4-2-3-1</option>
+                <option value="4123">4-1-2-3</option><option value="451">4-5-1</option>
+            </optgroup>
+            <optgroup label="9 v 9">
+                <option value="323">3-2-3</option><option value="332">3-3-2</option>
+            </optgroup>
+            <optgroup label="7 v 7">
+                <option value="231">2-3-1</option>
+            </optgroup>
+        </select>
+
+        <div class="toggle-group">
+            <label>Width:</label>
+            <input type="range" id="widthSlider" min="0.5" max="1.2" step="0.1" value="1" oninput="applyFormation()">
+        </div>
+
+        <div class="toggle-group">
+            <input type="checkbox" id="showAway" onchange="applyFormation()">
+            <label>Opponents</label>
+        </div>
+
+        <div class="toggle-group">
+            <label>Size:</label>
+            <input type="range" id="sizeSlider" min="0.5" max="1.5" step="0.1" value="1" oninput="resizeIcons()">
+        </div>
+
+        <button id="drawBtn" class="btn-draw" onclick="toggleDraw()">Draw</button>
+        <button style="background:#fff; color:#000;" onclick="addBall()">⚽ Ball</button>
+        <button style="background:#6c757d; color:white;" onclick="clearDrawings()">Clear Ink</button>
+        <button class="btn-save" onclick="saveBoard()">💾 Save</button>
+    </div>
+    
+    <div class="canvas-wrapper">
+        <canvas id="soccerField" width="950" height="600"></canvas>
+    </div>
+
+    <script>
+        const canvas = new fabric.Canvas('soccerField', {
+            allowTouchScrolling: false, // Prevents screen jumping while dragging players
+            stopContextMenu: true
+        });
+        const CW = 950; const CH = 600;
+
+        function setupField() {
+            canvas.setBackgroundColor('#2e7d32', canvas.renderAll.bind(canvas));
+            const lineOpts = { stroke: 'rgba(255,255,255,0.8)', strokeWidth: 3, selectable: false, evented: false };
+            
+            canvas.add(new fabric.Rect({ left: 25, top: 25, width: 900, height: 550, fill: '', ...lineOpts }));
+            canvas.add(new fabric.Line([CW/2, 25, CW/2, 575], lineOpts));
+            canvas.add(new fabric.Circle({ left: CW/2-60, top: CH/2-60, radius: 60, fill: '', ...lineOpts }));
+            canvas.add(new fabric.Rect({ left: 25, top: 150, width: 130, height: 300, fill: '', ...lineOpts }));
+            canvas.add(new fabric.Rect({ left: 795, top: 150, width: 130, height: 300, fill: '', ...lineOpts }));
+            applyFormation();
+        }
+
+        const formations = {
+            "433": [{n:1,x:60,y:275},{n:2,x:220,y:100},{n:4,x:200,y:210},{n:5,x:200,y:340},{n:3,x:220,y:450},{n:6,x:420,y:275},{n:8,x:480,y:150},{n:10,x:480,y:400},{n:7,x:720,y:100},{n:9,x:780,y:275},{n:11,x:720,y:450}],
+            "4231": [{n:1,x:60,y:275},{n:2,x:220,y:80},{n:4,x:200,y:210},{n:5,x:200,y:340},{n:3,x:220,y:470},{n:6,x:400,y:180},{n:8,x:400,y:370},{n:7,x:620,y:100},{n:10,x:580,y:275},{n:11,x:620,y:450},{n:9,x:820,y:275}],
+            "4123": [{n:1,x:60,y:275},{n:2,x:220,y:100},{n:4,x:200,y:210},{n:5,x:200,y:340},{n:3,x:220,y:450},{n:6,x:380,y:275},{n:8,x:520,y:180},{n:10,x:520,y:370},{n:7,x:740,y:120},{n:9,x:800,y:275},{n:11,x:740,y:430}],
+            "451": [{n:1,x:60,y:275},{n:2,x:220,y:80},{n:4,x:200,y:210},{n:5,x:200,y:340},{n:3,x:220,y:470},{n:6,x:480,y:275},{n:8,x:460,y:150},{n:10,x:460,y:400},{n:7,x:580,y:80},{n:11,x:580,y:470},{n:9,x:820,y:275}],
+            "323": [{n:1,x:60,y:275},{n:2,x:220,y:120},{n:4,x:200,y:275},{n:3,x:220,y:430},{n:6,x:440,y:180},{n:8,x:440,y:370},{n:7,x:700,y:120},{n:9,x:770,y:275},{n:11,x:700,y:430}],
+            "332": [{n:1,x:60,y:275},{n:2,x:220,y:120},{n:4,x:200,y:275},{n:3,x:220,y:430},{n:7,x:470,y:100},{n:6,x:450,y:275},{n:11,x:470,y:450},{n:10,x:720,y:180},{n:9,x:720,y:370}],
+            "231": [{n:1,x:60,y:275},{n:4,x:220,y:180},{n:5,x:220,y:370},{n:7,x:480,y:100},{n:6,x:480,y:275},{n:11,x:480,y:450},{n:9,x:800,y:275}]
+        };
+
+        function addPlayer(x, y, num, color) {
+            const scale = document.getElementById('sizeSlider').value;
+            const p = new fabric.Group([
+                new fabric.Circle({ radius: 18, fill: color, stroke: '#fff', strokeWidth: 2 }),
+                new fabric.Text(num.toString(), { fontSize: 16, fill: '#fff', left: num > 9 ? 8 : 13, top: 10, fontFamily: 'Arial' })
+            ], { left: x, top: y, hasControls: false, hasBorders: false, scaleX: scale, scaleY: scale });
+            canvas.add(p);
+        }
+
+        function applyFormation() {
+            canvas.getObjects('group').filter(o => o.name !== 'ball').forEach(o => canvas.remove(o));
+            const type = document.getElementById('formationSelect').value;
+            const away = document.getElementById('showAway').checked;
+            const widthFactor = parseFloat(document.getElementById('widthSlider').value);
+            const midY = 300;
+
+            formations[type].forEach(pos => {
+                const newY = midY + (pos.y - midY) * widthFactor;
+                addPlayer(pos.x, newY, pos.n, '#007bff');
+                if (away) addPlayer(CW - pos.x - 40, newY, pos.n, '#dc3545');
+            });
+        }
+
+        function toggleDraw() {
+            canvas.isDrawingMode = !canvas.isDrawingMode;
+            canvas.freeDrawingBrush.color = "yellow";
+            canvas.freeDrawingBrush.width = 4;
+            document.getElementById('drawBtn').classList.toggle('active', canvas.isDrawingMode);
+        }
+
+        function clearDrawings() { canvas.getObjects('path').forEach(o => canvas.remove(o)); }
+
+        function resizeIcons() {
+            const v = document.getElementById('sizeSlider').value;
+            canvas.getObjects('group').forEach(o => { o.scaleX = v; o.scaleY = v; });
+            canvas.renderAll();
+        }
+
+        function addBall() {
+            const b = new fabric.Group([
+                new fabric.Circle({ radius: 10, fill: '#fff', stroke: '#000', strokeWidth: 1.5 }),
+                new fabric.Line([10, 0, 10, 20], { stroke: '#000' }),
+                new fabric.Line([0, 10, 20, 10], { stroke: '#000' })
+            ], { left: 465, top: 290, name: 'ball', hasControls: false, hasBorders: false });
+            canvas.add(b);
+        }
+
+        function saveBoard() {
+            const dataURL = canvas.toDataURL({ format: 'png', quality: 1 });
+            const link = document.createElement('a');
+            link.download = 'tactics.png';
+            link.href = dataURL;
+            link.click();
+        }
+
+        window.onload = setupField;
+    </script>
+</body>
+</html>
